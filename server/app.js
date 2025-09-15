@@ -15,6 +15,7 @@ const authRoutes = require("./routes/auth");
 const usersRouter = require("./routes/users");
 const taskLogsRoutes = require("./routes/taskLogs");
 const notificationsRoutes = require("./routes/notifications");
+const commentsRoutes = require("./routes/comments");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -33,6 +34,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRouter);
 app.use("/api/task-logs", taskLogsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/comments", commentsRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("❌ Server Error:", err);

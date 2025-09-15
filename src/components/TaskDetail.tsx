@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiService } from "../services/api";
-import { Task, Allegato } from "../types";
+import { Task, Allegato, Comment } from "../types";
 import {
   AlertCircle,
   CheckCircle,
@@ -23,6 +23,8 @@ import {
   MessageSquare,
   Tag,
   AlertTriangle,
+  Plus,
+  Send,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../context/AuthContext";
@@ -35,9 +37,13 @@ const TaskDetail: React.FC = () => {
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [allegati, setAllegati] = useState<Allegato[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [totalHours, setTotalHours] = useState(0);
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [showCommentForm, setShowCommentForm] = useState(false);
+  const [newComment, setNewComment] = useState({ commento: "", oreDedicate: 0 });
   const { dispatch } = useApp();
-  const { canModifyTask } = useAuth();
+  const { canModifyTask, user } = useAuth();
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -48,12 +54,16 @@ const TaskDetail: React.FC = () => {
   useEffect(() => {
     const fetchTask = async () => {
       try {
-        const [taskData, allegatiData] = await Promise.all([
+        const [taskData, allegatiData, commentsData, hoursData] = await Promise.all([
           apiService.getTaskById(taskId!),
           apiService.getTaskAllegati(parseInt(taskId!)),
+          apiService.getTaskComments(parseInt(taskId!)),
+          apiService.getTaskTotalHours(parseInt(taskId!)),
         ]);
         setTask(taskData as Task);
         setAllegati(allegatiData);
+        setComments(commentsData);
+        setTotalHours(hoursData.totalHours);
       } catch (error) {
         console.error("Error fetching task:", error);
         dispatch({
@@ -255,6 +265,58 @@ const TaskDetail: React.FC = () => {
     return "Documento";
   };
 
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!task || !newComment.commento.trim()) return;
+
+    try {
+      const createdComment = await apiService.createComment({
+        commento: newComment.commento,
+        idTask: task.id!,
+        oreDedicate: newComment.oreDedicate,
+      });
+      
+      setComments([createdComment, ...comments]);
+      setNewComment({ commento: "", oreDedicate: 0 });
+      setShowCommentForm(false);
+      
+      // Aggiorna ore totali
+      const hoursData = await apiService.getTaskTotalHours(task.id!);
+      setTotalHours(hoursData.totalHours);
+    } catch (error) {
+      console.error("Errore nell'aggiunta commento:", error);
+      alert("Errore nell'aggiunta del commento");
+    }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm("Sei sicuro di voler eliminare questo commento?")) return;
+
+    try {
+      await apiService.deleteComment(commentId);
+      setComments(comments.filter(c => c.id !== commentId));
+      
+      // Aggiorna ore totali
+      if (task) {
+        const hoursData = await apiService.getTaskTotalHours(task.id!);
+        setTotalHours(hoursData.totalHours);
+      }
+    } catch (error) {
+      console.error("Errore nell'eliminazione commento:", error);
+      alert("Errore nell'eliminazione del commento");
+    }
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString("it-IT", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const { immagini, documenti } = separateAllegati();
 
   if (loading)
@@ -442,8 +504,11 @@ const TaskDetail: React.FC = () => {
           <div className="flex items-start mt-2">
             <Clock className="h-5 w-5 text-gray-400 mr-3 mt-0.5" />
             <div className="w-full">
-              <p className="text-sm font-medium text-gray-500">Ore dedicate</p>
-              <p className="text-gray-900">{task.oreDedicate ?? 0}</p>
+              <p className="text-sm font-medium text-gray-500">Ore dedicate (task + commenti)</p>
+              <p className="text-gray-900">{(task.oreDedicate ?? 0) + totalHours}</p>
+              <p className="text-xs text-gray-500">
+                Task: {task.oreDedicate ?? 0}h | Commenti: {totalHours}h
+              </p>
 
               {/* Barra di avanzamento */}
               {(task.oreStimate ?? 0) > 0 && (
@@ -452,13 +517,13 @@ const TaskDetail: React.FC = () => {
                     <span>
                       Avanzamento:{" "}
                       {(
-                        ((task.oreDedicate ?? 0) / (task.oreStimate ?? 1)) *
+                        (((task.oreDedicate ?? 0) + totalHours) / (task.oreStimate ?? 1)) *
                         100
                       ).toFixed(0)}
                       %
                     </span>
                     <span>
-                      {task.oreDedicate ?? 0}/{task.oreStimate ?? 0} h
+                      {(task.oreDedicate ?? 0) + totalHours}/{task.oreStimate ?? 0} h
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
@@ -467,7 +532,7 @@ const TaskDetail: React.FC = () => {
                       style={{
                         width: `${Math.min(
                           100,
-                          ((task.oreDedicate ?? 0) / (task.oreStimate ?? 1)) *
+                          (((task.oreDedicate ?? 0) + totalHours) / (task.oreStimate ?? 1)) *
                             100
                         )}%`,
                       }}
@@ -481,10 +546,10 @@ const TaskDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Commenti */}
+      {/* Commenti Task (campo originale) */}
       <div className="bg-white p-6 rounded-2xl shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-          <MessageSquare className="h-5 w-5 mr-2 text-blue-600" /> Commenti
+        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center border-b pb-2">
+          <MessageSquare className="h-5 w-5 mr-2 text-blue-600" /> Note Task
         </h3>
 
         {task.commenti ? (
@@ -513,6 +578,140 @@ const TaskDetail: React.FC = () => {
             <p>Nessun commento presente</p>
           </div>
         )}
+      </div>
+
+      {/* Sistema Commenti con Ore */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <MessageSquare className="h-5 w-5 mr-2 text-blue-600" /> 
+            Commenti e Ore ({comments.length})
+          </h3>
+          <div className="flex items-center space-x-4">
+            <div className="text-sm text-gray-600">
+              Ore totali commenti: <span className="font-semibold text-blue-600">{totalHours}h</span>
+            </div>
+            <button
+              onClick={() => setShowCommentForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" /> <span>Aggiungi Commento</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Form Nuovo Commento */}
+        {showCommentForm && (
+          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-blue-900">Nuovo Commento</h4>
+              <button
+                onClick={() => {
+                  setShowCommentForm(false);
+                  setNewComment({ commento: "", oreDedicate: 0 });
+                }}
+                className="text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddComment} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-blue-900 mb-1">
+                  Commento *
+                </label>
+                <textarea
+                  value={newComment.commento}
+                  onChange={(e) => setNewComment({ ...newComment, commento: e.target.value })}
+                  rows={3}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Scrivi il tuo commento..."
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-blue-900 mb-1">
+                    Ore Dedicate
+                  </label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="0"
+                    value={newComment.oreDedicate}
+                    onChange={(e) => setNewComment({ ...newComment, oreDedicate: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    <span>Aggiungi Commento</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Lista Commenti */}
+        {comments.length > 0 ? (
+          <div className="space-y-4">
+            {comments.map((comment) => (
+              <div
+                key={comment.id}
+                className="bg-gray-50 rounded-lg border border-gray-200 p-4 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-blue-100 rounded-full p-2">
+                      <MessageSquare className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{comment.utente}</p>
+                      <p className="text-xs text-gray-500">{formatDateTime(comment.datetime)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    {comment.oreDedicate > 0 && (
+                      <div className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium flex items-center">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {comment.oreDedicate}h
+                      </div>
+                    )}
+                    {comment.utente === user?.username && (
+                      <button
+                        onClick={() => handleDeleteComment(comment.id!)}
+                        className="text-red-600 hover:text-red-800 transition-colors"
+                        title="Elimina commento"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="ml-11">
+                  <p className="text-gray-700 whitespace-pre-wrap">{comment.commento}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : !showCommentForm ? (
+          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <MessageSquare className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+            <p className="mb-2">Nessun commento presente</p>
+            <button
+              onClick={() => setShowCommentForm(true)}
+              className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+            >
+              Aggiungi il primo commento
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Allegati */}

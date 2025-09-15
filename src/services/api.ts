@@ -1,4 +1,5 @@
 import { Cliente, Software, Task, Allegato } from "../types";
+import type { Comment } from "../types";
 
 //const API_BASE_URL = 'http://localhost:3002/api';
 const API_BASE_URL =
@@ -220,6 +221,35 @@ class ApiService {
     return this.request<void>(`/notifications/${id}`, {
       method: "DELETE",
     });
+  }
+
+  // Comments API
+  async getTaskComments(taskId: number): Promise<Comment[]> {
+    return this.request<Comment[]>(`/comments/task/${taskId}`);
+  }
+
+  async createComment(comment: Omit<Comment, "id" | "datetime" | "utente">): Promise<Comment> {
+    return this.request<Comment>("/comments", {
+      method: "POST",
+      body: JSON.stringify(comment),
+    });
+  }
+
+  async updateComment(id: number, comment: Partial<Comment>): Promise<Comment> {
+    return this.request<Comment>(`/comments/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(comment),
+    });
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    return this.request<void>(`/comments/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getTaskTotalHours(taskId: number): Promise<{ totalHours: number }> {
+    return this.request<{ totalHours: number }>(`/comments/task/${taskId}/hours`);
   }
 }
 

@@ -93,3 +93,12 @@ export interface Notification {
   taskDescrizione?: string;
   createdByName?: string;
 }
+
+export interface Comment {
+  id?: number;
+  commento: string;
+  utente: string;
+  idTask: number;
+  datetime: string;
+  oreDedicate: number;
+}
